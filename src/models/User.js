@@ -103,6 +103,97 @@ class User {
   }
 
   /**
+   * Update calendar preferences for a user
+   * @param {string} firebaseUid - Firebase user ID
+   * @param {Array} calendarIds - Array of calendar IDs
+   * @returns {Object} Updated user with calendar preferences
+   */
+  static async updateCalendarPreferences (firebaseUid, calendarIds) {
+    try {
+      // First, get the user to get the user_id
+      const user = await this.findByFirebaseUid(firebaseUid);
+      if (!user) {
+        throw new Error('User not found');
+      }
+
+      // Get a connection for transaction
+      const pool = databaseConnection.getPool();
+      const connection = await pool.getConnection();
+
+      try {
+        // Start transaction
+        await connection.beginTransaction();
+
+        // Delete existing preferences for this user
+        const deleteSql = 'DELETE FROM user_calendar_preferences WHERE user_id = ?';
+        await connection.execute(deleteSql, [user.id]);
+
+        // Insert new preferences
+        if (calendarIds.length > 0) {
+          const insertSql = `
+            INSERT INTO user_calendar_preferences (user_id, calendar_id) 
+            VALUES ${calendarIds.map(() => '(?, ?)').join(', ')}
+          `;
+          
+          const insertParams = [];
+          calendarIds.forEach(calendarId => {
+            insertParams.push(user.id, calendarId);
+          });
+          
+          await connection.execute(insertSql, insertParams);
+        }
+
+        // Commit transaction
+        await connection.commit();
+
+        // Get the updated user with calendar preferences
+        const updatedUser = await this.findByFirebaseUid(firebaseUid);
+        logger.info('Calendar preferences updated successfully', { uid: firebaseUid });
+
+        return updatedUser;
+      } catch (error) {
+        // Rollback transaction on error
+        await connection.rollback();
+        throw error;
+      } finally {
+        // Release connection
+        connection.release();
+      }
+    } catch (error) {
+      logger.error('Error updating calendar preferences:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Get calendar preferences for a user
+   * @param {string} firebaseUid - Firebase user ID
+   * @returns {Array} Array of calendar IDs
+   */
+  static async getCalendarPreferences (firebaseUid) {
+    try {
+      // Get the user to get the user_id
+      const user = await this.findByFirebaseUid(firebaseUid);
+      if (!user) {
+        return [];
+      }
+
+      const sql = `
+        SELECT calendar_id 
+        FROM user_calendar_preferences 
+        WHERE user_id = ?
+        ORDER BY created_at ASC
+      `;
+      
+      const preferences = await databaseConnection.query(sql, [user.id]);
+      return preferences.map(pref => pref.calendar_id);
+    } catch (error) {
+      logger.error('Error getting calendar preferences:', error);
+      throw error;
+    }
+  }
+
+  /**
    * Find or create user (upsert)
    * @param {Object} userData - User data from Firebase
    * @returns {Object} User object
