@@ -12,4 +12,4 @@ router.use(authenticateToken);
 router.post('/calendar-preferences', asyncHandler(UserController.saveCalendarPreferences));
 router.get('/calendar-preferences', asyncHandler(UserController.getCalendarPreferences));
 
-module.exports = router; 
+module.exports = router;

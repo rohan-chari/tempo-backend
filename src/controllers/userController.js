@@ -8,7 +8,7 @@ class UserController {
    * @param {Object} req - Express request object
    * @param {Object} res - Express response object
    */
-  static async saveCalendarPreferences(req, res) {
+  static async saveCalendarPreferences (req, res) {
     try {
       const { calendarIds } = req.body;
       const userId = req.user.firebase_uid; // From auth middleware
@@ -21,13 +21,13 @@ class UserController {
       // Update user with calendar preferences
       await User.updateCalendarPreferences(userId, calendarIds);
 
-      logger.info('Calendar preferences saved successfully', { 
-        userId, 
-        calendarCount: calendarIds.length 
+      logger.info('Calendar preferences saved successfully', {
+        userId,
+        calendarCount: calendarIds.length,
       });
 
       return ResponseHandler.success(res, 200, {
-        calendarIds: calendarIds
+        calendarIds,
       }, 'Calendar preferences saved successfully');
 
     } catch (error) {
@@ -41,7 +41,7 @@ class UserController {
    * @param {Object} req - Express request object
    * @param {Object} res - Express response object
    */
-  static async getCalendarPreferences(req, res) {
+  static async getCalendarPreferences (req, res) {
     try {
       const userId = req.user.firebase_uid; // From auth middleware
 
@@ -51,7 +51,7 @@ class UserController {
       logger.info('Calendar preferences retrieved successfully', { userId });
 
       return ResponseHandler.success(res, 200, {
-        calendarIds: calendarIds
+        calendarIds,
       }, 'Calendar preferences retrieved successfully');
 
     } catch (error) {
@@ -60,7 +60,6 @@ class UserController {
     }
   }
 
-
 }
 
-module.exports = UserController; 
+module.exports = UserController;

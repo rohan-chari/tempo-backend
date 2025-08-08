@@ -134,12 +134,12 @@ class User {
             INSERT INTO user_calendar_preferences (user_id, calendar_id) 
             VALUES ${calendarIds.map(() => '(?, ?)').join(', ')}
           `;
-          
+
           const insertParams = [];
           calendarIds.forEach(calendarId => {
             insertParams.push(user.id, calendarId);
           });
-          
+
           await connection.execute(insertSql, insertParams);
         }
 
@@ -184,7 +184,7 @@ class User {
         WHERE user_id = ?
         ORDER BY created_at ASC
       `;
-      
+
       const preferences = await databaseConnection.query(sql, [user.id]);
       return preferences.map(pref => pref.calendar_id);
     } catch (error) {

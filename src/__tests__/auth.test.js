@@ -83,4 +83,4 @@ describe('Auth Controller', () => {
       expect(response.body.message).toBe('At least one field is required for update');
     });
   });
-}); 
+});
