@@ -32,7 +32,7 @@ class ChatService {
         throw new Error('Invalid permissions structure');
       }
 
-      // Process the message (this is where you'd integrate with your AI/chat service)
+      // Process the message with AI
       const response = await this.generateChatResponse(message, context, permissions, user);
 
       logger.info('Chat message processed successfully', {
@@ -48,7 +48,7 @@ class ChatService {
   }
 
   /**
-   * Generate chat response based on message and context
+   * Generate chat response using AI/NLP services
    * @private
    * @param {string} message - The user's message
    * @param {Object} context - Additional context for the message
@@ -58,79 +58,111 @@ class ChatService {
    */
   static async generateChatResponse (message, context, permissions, user) {
     try {
-      // This is a placeholder implementation
-      // Replace this with your actual AI/chat service integration
-
-      // Simulate processing time
-      await new Promise(resolve => setTimeout(resolve, 100));
-
-      // Mock response based on message content
-      let responseMessage = 'I understand your message. How can I help you further?';
-      let responseType = 'text';
       const metadata = {};
 
-      // Simple keyword-based responses for demonstration
-      const lowerMessage = message.toLowerCase();
-
-      if (lowerMessage.includes('hello') || lowerMessage.includes('hi')) {
-        responseMessage = 'Hello! I\'m here to help you with your queries.';
-      } else if (
-        lowerMessage.includes('calendar') ||
-        lowerMessage.includes('schedule') ||
-        lowerMessage.includes('meeting') ||
-        lowerMessage.includes('event') ||
-        lowerMessage.includes('appointment')
-      ) {
-        responseMessage = 'I can help you with calendar and scheduling tasks. What do you need?';
-        responseType = 'calendar_suggestion';
-        metadata.suggestedActions = ['view_calendar', 'create_event', 'check_availability'];
-        try {
-          const parsed = await parseCalendarIntent(message);
-          metadata.calendarIntent = parsed;
-        } catch (aiError) {
-          logger.warn('Calendar intent parsing unavailable', {
-            status: aiError.status || 500,
-            reason: aiError.message,
-          });
-        }
-      } else if (lowerMessage.includes('error') || lowerMessage.includes('problem')) {
-        responseMessage = 'I see you\'re experiencing an issue. Let me help you troubleshoot.';
-        responseType = 'error_assistance';
-      } else if (lowerMessage.includes('help')) {
-        responseMessage = 'I\'m here to assist you. What would you like to know?';
+      // Short-circuit: friendly greeting for low-intent greetings
+      const normalized = message.trim().toLowerCase();
+      const isGreeting = /^(hi|hello|hey|yo|sup|howdy|hola|bonjour|hallo)(!|\.)?$/.test(normalized);
+      if (isGreeting) {
+        return {
+          message: "Hello! I'm here to help with your calendar. You can say things like 'Create lunch with Sam tomorrow at 1pm' or 'Show my events for Friday'.",
+          type: 'text',
+          timestamp: new Date().toISOString(),
+          messageId: this.generateMessageId(),
+          metadata: { greeting: true },
+          user: {
+            id: user.firebase_uid,
+            email: user.email,
+          },
+        };
       }
 
-      // Include context information if available
-      if (context) {
-        metadata.contextProcessed = true;
-        if (context.currentPage) {
-          metadata.currentPage = context.currentPage;
-        }
-        if (context.userPreferences) {
-          metadata.userPreferences = context.userPreferences;
-        }
-      }
+      // Try to parse calendar intent for any non-greeting message
+      try {
+        const calendarIntent = await parseCalendarIntent(message);
+        metadata.calendarIntent = calendarIntent;
+        
+        // Generate response based on calendar intent
+        const responseMessage = this.generateCalendarResponse(calendarIntent);
+        const responseType = 'calendar_action';
+        
+        return {
+          message: responseMessage,
+          type: responseType,
+          timestamp: new Date().toISOString(),
+          messageId: this.generateMessageId(),
+          metadata,
+          user: {
+            id: user.firebase_uid,
+            email: user.email,
+          },
+        };
+      } catch (aiError) {
+        // If calendar parsing fails, return a generic response
+        logger.warn('Calendar intent parsing failed, using fallback response', {
+          error: aiError.message,
+          userInput: message,
+        });
 
-      // Consider permissions in response
-      if (permissions) {
-        metadata.permissionsConsidered = true;
-        // You might adjust the response based on user permissions
+        return {
+          message: 'I understand your message. How can I help you with your calendar or other tasks?',
+          type: 'text',
+          timestamp: new Date().toISOString(),
+          messageId: this.generateMessageId(),
+          metadata: {
+            fallback: true,
+            error: aiError.message,
+          },
+          user: {
+            id: user.firebase_uid,
+            email: user.email,
+          },
+        };
       }
-
-      return {
-        message: responseMessage,
-        type: responseType,
-        timestamp: new Date().toISOString(),
-        messageId: this.generateMessageId(),
-        metadata,
-        user: {
-          id: user.firebase_uid,
-          email: user.email,
-        },
-      };
     } catch (error) {
       logger.error('Failed to generate chat response:', error);
       throw new Error('Failed to generate response');
+    }
+  }
+
+  /**
+   * Generate response message based on calendar intent
+   * @private
+   * @param {Object} calendarIntent - Parsed calendar intent from AI
+   * @returns {string} Human-readable response message
+   */
+  static generateCalendarResponse (calendarIntent) {
+    const { action, title, date, timeStart, contacts } = calendarIntent;
+
+    switch (action) {
+      case 'CREATE':
+        if (title && date) {
+          const timeStr = timeStart ? ` at ${timeStart}` : '';
+          const contactStr = contacts && contacts.length > 0 ? ` with ${contacts.join(', ')}` : '';
+          return `I'll create an event "${title}" on ${date}${timeStr}${contactStr}.`;
+        }
+        return 'I understand you want to create an event. Could you provide more details like the title and date?';
+      
+      case 'GET':
+        if (date) {
+          return `I'll show you your schedule for ${date}.`;
+        }
+        return 'I\'ll show you your calendar.';
+      
+      case 'UPDATE':
+        if (title) {
+          return `I'll help you update the event "${title}". What changes would you like to make?`;
+        }
+        return 'I understand you want to update an event. Which event would you like to modify?';
+      
+      case 'DELETE':
+        if (title) {
+          return `I'll help you delete the event "${title}".`;
+        }
+        return 'I understand you want to delete an event. Which event would you like to remove?';
+      
+      default:
+        return 'I understand your calendar request. How can I help you further?';
     }
   }
 
@@ -166,63 +198,6 @@ class ChatService {
    */
   static generateMessageId () {
     return `msg_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
-  }
-
-  /**
-   * Handle rate limiting check
-   * @param {Object} user - The authenticated user
-   * @returns {Promise<boolean>} Whether the user is within rate limits
-   */
-  static async checkRateLimit (user) {
-    try {
-      // Implement your rate limiting logic here
-      // This could check against a Redis store, database, or in-memory cache
-
-      // For now, return true (no rate limiting)
-      // You might want to implement something like:
-      // - Check requests per minute/hour for the user
-      // - Different limits for different user tiers
-      // - Temporary blocks for abuse
-
-      logger.info('Rate limit check passed', { userId: user.firebase_uid });
-      return true;
-    } catch (error) {
-      logger.error('Rate limit check failed:', error);
-      return false;
-    }
-  }
-
-  /**
-   * Log chat interaction for analytics/monitoring
-   * @param {Object} user - The authenticated user
-   * @param {Object} messageData - The original message data
-   * @param {Object} response - The generated response
-   */
-  static async logChatInteraction (user, messageData, response) {
-    try {
-      // Log the interaction for analytics, monitoring, or audit purposes
-      logger.info('Chat interaction logged', {
-        userId: user.firebase_uid,
-        messageId: response.messageId,
-        messageType: response.type,
-        timestamp: response.timestamp,
-        messageLength: messageData.message?.length || 0,
-        responseLength: response.message?.length || 0,
-        hasContext: !!messageData.context,
-        hasPermissions: !!messageData.permissions,
-      });
-
-      // You might want to store this in a database for analytics
-      // await ChatInteraction.create({
-      //   user_id: user.firebase_uid,
-      //   message_id: response.messageId,
-      //   message_type: response.type,
-      //   created_at: new Date()
-      // });
-    } catch (error) {
-      logger.error('Failed to log chat interaction:', error);
-      // Don't throw here as this shouldn't break the main flow
-    }
   }
 }
 

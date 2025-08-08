@@ -16,13 +16,6 @@ class ChatController {
       const { message, context, permissions } = req.body;
       const user = req.user; // Set by auth middleware
 
-      logger.info('Chat message received', {
-        userId: user.firebase_uid,
-        hasMessage: !!message,
-        hasContext: !!context,
-        hasPermissions: !!permissions,
-      });
-
       // Validate request body
       if (!message) {
         return ResponseHandler.badRequest(res, 'Message is required');
@@ -36,20 +29,11 @@ class ChatController {
         return ResponseHandler.badRequest(res, 'Message is too long (maximum 10,000 characters)');
       }
 
-      // Check rate limiting
-      const isWithinRateLimit = await ChatService.checkRateLimit(user);
-      if (!isWithinRateLimit) {
-        return ResponseHandler.error(res, 429, 'Rate limit exceeded. Please try again later.');
-      }
-
       // Process the message
       const chatResponse = await ChatService.processMessage(
         { message: message.trim(), context, permissions },
         user,
       );
-
-      // Log the interaction
-      await ChatService.logChatInteraction(user, req.body, chatResponse);
 
       // Return successful response
       return ResponseHandler.success(
