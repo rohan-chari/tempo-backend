@@ -1,43 +1,36 @@
 const getOpenAIClient = require('../lib/openai');
 const logger = require('../utils/logger');
 
-const SYSTEM_PROMPT = `
-You are an expert assistant for a conversational calendar app.  
-Given a user's natural language input, you will convert it into a **strict, valid JSON object** that represents the intended calendar operation.  
-The user may request to view, add, update, or delete events in their calendar.  
-They may also refer to contacts, locations, or recurring events.  
+const SYSTEM_PROMPT = `You are an expert assistant for a conversational calendar app. Convert user input into a strict JSON object representing calendar operations.
 
-The JSON must follow this structure exactly:
-
+JSON structure:
 {
-  "action": "GET" | "CREATE" | "UPDATE" | "DELETE",  // The calendar operation
-  "date": "YYYY-MM-DD" | null,                       // Event date or date to check; null if not specified
-  "timeStart": "HH:MM" | null,                       // Start time in 24h format, null if not specified
-  "timeEnd": "HH:MM" | null,                         // End time in 24h format, null if not specified
-  "title": "string" | null,                          // Event title, e.g. "Lunch with Mom"
-  "location": "string" | null,                       // Event location
-  "contacts": [ "string", ... ],                     // Names of people involved
-  "recurrence": "none" | "daily" | "weekly" | "monthly" | null, // Recurrence rule if any
-  "notes": "string" | null,                          // Additional notes or description
-  "isPrivate": true | false                          // true if the event should be marked private
+"action": "GET"|"CREATE"|"UPDATE"|"DELETE",
+"startDate": "YYYY-MM-DD"|null,
+"endDate": "YYYY-MM-DD"|null,
+"timeStart": "HH:MM"|null,
+"timeEnd": "HH:MM"|null,
+"title": "string"|null,
+"location": "string"|null,
+"contacts": ["string",...],
+"recurrence": "none"|"daily"|"weekly"|"monthly"|null,
+"notes": "string"|null,
+"isPrivate": true|false
 }
 
-**Rules:**
-- If the user requests to see their schedule, set "action" to "GET".
-- If the user requests to add an event, set "action" to "CREATE".
-- If the user requests to remove an event, set "action" to "DELETE".
-- If the user requests to modify an existing event, set "action" to "UPDATE".
-- Parse any date and time mentioned. If missing, set them to null.
-- If only a time range is given without a date, assume today's date.
-- Extract contacts from the text if possible.
-- If a location is specified, put it in "location".
-- If recurrence is implied (e.g., "every Monday", "daily", "weekly"), set "recurrence" accordingly.
-- "isPrivate" should be true if the request suggests it's personal (e.g., mentions "private" or "don't share").
-- Do **not** add any fields not listed above.
-- Return **only** the JSON object. No text, no explanation.
-
-This needs to be processed as quickly as possible — under 5 seconds.
-`;
+Rules:
+- GET=view schedule, CREATE=add event, UPDATE=modify event, DELETE=remove event
+- Single date: set startDate, leave endDate null
+- Date range: set both startDate and endDate
+- No time specified: timeStart="00:00", timeEnd="23:59"
+- "this weekend"=Saturday to Sunday current week
+- "next weekend"=Saturday to Sunday next week
+- "today"=current date, "tomorrow"=next day
+- "this week"=Monday to Sunday current week
+- "next week"=Monday to Sunday next week
+- Extract contacts, location, recurrence if mentioned
+- isPrivate=true if "private" or "don't share" mentioned
+- Return only JSON object, no text or explanation.`;
 
 async function parseCalendarIntent (userInput, { timeoutMs = 4500 } = {}) {
   const startTime = Date.now();
@@ -130,7 +123,7 @@ async function parseCalendarIntent (userInput, { timeoutMs = 4500 } = {}) {
       throw err;
     }
 
-    const requiredKeys = ['action', 'date', 'timeStart', 'timeEnd', 'title', 'location', 'contacts', 'recurrence', 'notes', 'isPrivate'];
+    const requiredKeys = ['action', 'startDate', 'timeStart', 'timeEnd', 'title', 'location', 'contacts', 'recurrence', 'notes', 'isPrivate'];
     const hasAll = requiredKeys.every(k => Object.prototype.hasOwnProperty.call(parsed, k));
 
     // Log validation results
