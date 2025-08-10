@@ -3,6 +3,7 @@ const healthRoutes = require('./healthRoutes');
 const authRoutes = require('./authRoutes');
 const userRoutes = require('./userRoutes');
 const chatRoutes = require('./chatRoutes');
+const calendarRoutes = require('./calendarRoutes');
 
 const router = express.Router();
 
@@ -17,6 +18,9 @@ router.use('/user', userRoutes);
 
 // Chat routes
 router.use('/chat', chatRoutes);
+
+// Calendar routes
+router.use('/calendar', calendarRoutes);
 
 // API routes (to be added as modules are created)
 // router.use('/posts', postRoutes);

@@ -76,6 +76,11 @@ async function parseCalendarIntent (userInput, { timeoutMs = 4500 } = {}) {
       timeZone,
     });
 
+    // Console log the full payload being sent to OpenAI
+    console.log('=== OPENAI API PAYLOAD ===');
+    console.log(JSON.stringify(requestPayload, null, 2));
+    console.log('=== END PAYLOAD ===');
+
     const response = await openai.chat.completions.create(requestPayload, { signal: controller.signal });
 
     // Log the raw OpenAI response

@@ -1,0 +1,23 @@
+CREATE TABLE IF NOT EXISTS calendar_events (
+  id INT AUTO_INCREMENT PRIMARY KEY,
+  event_id VARCHAR(255) NOT NULL,
+  user_id INT NOT NULL,
+  title VARCHAR(500) NOT NULL,
+  start_date DATETIME NOT NULL,
+  end_date DATETIME NOT NULL,
+  is_all_day BOOLEAN DEFAULT FALSE,
+  calendar_id VARCHAR(255) NOT NULL,
+  calendar_name VARCHAR(255) NOT NULL,
+  firebase_uid VARCHAR(128) NOT NULL,
+  fetched_at TIMESTAMP NOT NULL,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+  UNIQUE KEY unique_event_user (event_id, user_id),
+  INDEX idx_user_id (user_id),
+  INDEX idx_event_id (event_id),
+  INDEX idx_calendar_id (calendar_id),
+  INDEX idx_firebase_uid (firebase_uid),
+  INDEX idx_start_date (start_date),
+  INDEX idx_end_date (end_date)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
