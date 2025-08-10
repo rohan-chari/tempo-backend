@@ -79,7 +79,9 @@ class ChatService {
 
       // Try to parse calendar intent for any non-greeting message
       try {
-        const calendarIntent = await parseCalendarIntent(message);
+        // Pass contacts from context if available
+        const contacts = context?.contacts || [];
+        const calendarIntent = await parseCalendarIntent(message, { contacts });
         metadata.calendarIntent = calendarIntent;
         
         // Generate response based on calendar intent

@@ -13,6 +13,14 @@ JSON structure:
 "title": "string"|null,
 "location": "string"|null,
 "contacts": ["string",...],
+"contactDetails": [
+  {
+    "id": "string",
+    "name": "string", 
+    "emails": ["string"],
+    "phoneNumbers": ["string"]
+  }
+],
 "recurrence": "none"|"daily"|"weekly"|"monthly"|null,
 "notes": "string"|null,
 "isPrivate": true|false
@@ -20,19 +28,43 @@ JSON structure:
 
 Rules:
 - GET=view schedule, CREATE=add event, UPDATE=modify event, DELETE=remove event
-- Single date: set startDate, leave endDate null
-- Date range: set both startDate and endDate
+- Single date: set both startDate and endDate to the same date
+- Date range: set both startDate and endDate to different dates
+- ALWAYS provide both startDate and endDate (never leave endDate as null)
 - No time specified: timeStart="00:00", timeEnd="23:59"
 - "this weekend"=Saturday to Sunday current week
 - "next weekend"=Saturday to Sunday next week
 - "today"=current date, "tomorrow"=next day
 - "this week"=Monday to Sunday current week
 - "next week"=Monday to Sunday next week
-- Extract contacts, location, recurrence if mentioned
+- IMPORTANT: When user says "tomorrow" or "tomorrow evening", calculate the actual date (current date + 1 day)
+- For "tomorrow evening" use timeStart="18:00", timeEnd="20:00" unless specific time given
+- For "tomorrow morning" use timeStart="09:00", timeEnd="11:00" unless specific time given
+- For "tomorrow afternoon" use timeStart="12:00", timeEnd="17:00" unless specific time given
+- Default duration: If only start time is specified without end time, set duration to 1 hour (e.g., if timeStart="14:00", set timeEnd="15:00")
+- Event titles: Be creative and descriptive based on context. Examples:
+  * "dinner with rohit" → "Dinner with Rohit"
+  * "lunch meeting" → "Lunch Meeting"
+  * "coffee chat" → "Coffee Chat"
+  * "team sync" → "Team Sync"
+  * "doctor appointment" → "Doctor Appointment"
+  * "movie night" → "Movie Night"
+  * "gym session" → "Gym Session"
+  * "date night" → "Date Night"
+  * "client call" → "Client Call"
+  * "family dinner" → "Family Dinner"
+- Notes: Only use for actual event-related notes like "bring laptop", "prepare agenda", "dress code: formal"
+- Do NOT put casual comments, contact descriptions, or personal remarks in notes
+- Examples of what NOT to put in notes: "she's cute", "he's funny", "love this person", etc.
+- If unsure, leave notes as null
+- Extract contacts from user input (e.g., "@rohit", "with John", "meeting with Sarah")
+- For contacts: extract names mentioned in the message
+- contactDetails should contain full contact objects with id, name, emails, phoneNumbers if available
+- Extract location, recurrence if mentioned
 - isPrivate=true if "private" or "don't share" mentioned
 - Return only JSON object, no text or explanation.`;
 
-async function parseCalendarIntent (userInput, { timeoutMs = 4500 } = {}) {
+async function parseCalendarIntent (userInput, { timeoutMs = 4500, contacts = [] } = {}) {
   const startTime = Date.now();
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutMs);
@@ -48,17 +80,30 @@ async function parseCalendarIntent (userInput, { timeoutMs = 4500 } = {}) {
     const openai = getOpenAIClient();
     logger.info('OpenAI client initialized, making API request');
 
-    // Compute current datetime context for the model
+    // Get current date/time context
     const now = new Date();
-    const nowIso = now.toISOString();
-    const dayOfWeek = now.toLocaleDateString('en-US', { weekday: 'long' });
-    const timeZone = Intl.DateTimeFormat().resolvedOptions().timeZone;
+    const today = now.toLocaleDateString('en-US', { 
+      weekday: 'long', 
+      year: 'numeric', 
+      month: 'long', 
+      day: 'numeric' 
+    });
+    const currentTime = now.toLocaleTimeString('en-US', { 
+      hour: '2-digit', 
+      minute: '2-digit',
+      hour12: true 
+    });
+
+    // Add contacts context if available
+    const contactsContext = contacts.length > 0 
+      ? `\nAvailable contacts: ${JSON.stringify(contacts, null, 2)}`
+      : '';
 
     const requestPayload = {
       model: 'gpt-4o',
       response_format: { type: 'json_object' },
       messages: [
-        { role: 'system', content: `Current datetime: ${nowIso} (${dayOfWeek}) [Timezone: ${timeZone}]` },
+        { role: 'system', content: `Today's date and time: ${today} at ${currentTime}${contactsContext}` },
         { role: 'system', content: SYSTEM_PROMPT },
         { role: 'user', content: userInput || '' },
       ],
@@ -71,9 +116,8 @@ async function parseCalendarIntent (userInput, { timeoutMs = 4500 } = {}) {
       temperature: requestPayload.temperature,
       userMessageLength: userInput?.length || 0,
       systemPromptLength: SYSTEM_PROMPT.length,
-      nowIso,
-      dayOfWeek,
-      timeZone,
+      today,
+      currentTime,
     });
 
     // Console log the full payload being sent to OpenAI
@@ -128,7 +172,7 @@ async function parseCalendarIntent (userInput, { timeoutMs = 4500 } = {}) {
       throw err;
     }
 
-    const requiredKeys = ['action', 'startDate', 'timeStart', 'timeEnd', 'title', 'location', 'contacts', 'recurrence', 'notes', 'isPrivate'];
+    const requiredKeys = ['action', 'startDate', 'timeStart', 'timeEnd', 'title', 'location', 'contacts', 'contactDetails', 'recurrence', 'notes', 'isPrivate'];
     const hasAll = requiredKeys.every(k => Object.prototype.hasOwnProperty.call(parsed, k));
 
     // Log validation results
@@ -147,6 +191,23 @@ async function parseCalendarIntent (userInput, { timeoutMs = 4500 } = {}) {
         parsedContent: parsed,
       });
       const err = new Error('AI JSON missing required fields');
+      err.status = 502;
+      throw err;
+    }
+
+    // Ensure endDate is always set - if null, use same as startDate
+    if (!parsed.endDate && parsed.startDate) {
+      parsed.endDate = parsed.startDate;
+    }
+
+    // Validate that we have both startDate and endDate
+    if (!parsed.startDate || !parsed.endDate) {
+      logger.error('Missing startDate or endDate after processing', {
+        startDate: parsed.startDate,
+        endDate: parsed.endDate,
+        parsedContent: parsed,
+      });
+      const err = new Error('Missing required date fields');
       err.status = 502;
       throw err;
     }
