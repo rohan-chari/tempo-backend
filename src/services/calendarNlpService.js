@@ -64,7 +64,7 @@ Rules:
 - isPrivate=true if "private" or "don't share" mentioned
 - Return only JSON object, no text or explanation.`;
 
-async function parseCalendarIntent (userInput, { timeoutMs = 4500, contacts = [] } = {}) {
+async function parseCalendarIntent (userInput, { timeoutMs = 10000, contacts = [] } = {}) {
   const startTime = Date.now();
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutMs);

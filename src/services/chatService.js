@@ -134,20 +134,33 @@ class ChatService {
    * @returns {string} Human-readable response message
    */
   static generateCalendarResponse (calendarIntent) {
-    const { action, title, date, timeStart, contacts } = calendarIntent;
+    const { action, title, startDate, endDate, timeStart, timeEnd, contacts } = calendarIntent;
 
     switch (action) {
       case 'CREATE':
-        if (title && date) {
+        if (title && startDate) {
           const timeStr = timeStart ? ` at ${timeStart}` : '';
+          const endTimeStr = timeEnd && timeEnd !== timeStart ? ` until ${timeEnd}` : '';
           const contactStr = contacts && contacts.length > 0 ? ` with ${contacts.join(', ')}` : '';
-          return `I'll create an event "${title}" on ${date}${timeStr}${contactStr}.`;
+          
+          // Handle single day vs multi-day events
+          if (startDate === endDate) {
+            return `I'll create an event "${title}" on ${startDate}${timeStr}${endTimeStr}${contactStr}.`;
+          } else {
+            return `I'll create an event "${title}" from ${startDate} to ${endDate}${timeStr}${endTimeStr}${contactStr}.`;
+          }
         }
         return 'I understand you want to create an event. Could you provide more details like the title and date?';
       
       case 'GET':
-        if (date) {
-          return `I'll show you your schedule for ${date}.`;
+        if (startDate && endDate) {
+          if (startDate === endDate) {
+            return `I'll show you your schedule for ${startDate}.`;
+          } else {
+            return `I'll show you your schedule from ${startDate} to ${endDate}.`;
+          }
+        } else if (startDate) {
+          return `I'll show you your schedule for ${startDate}.`;
         }
         return 'I\'ll show you your calendar.';
       
