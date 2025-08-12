@@ -13,7 +13,6 @@ const syncCalendarEvents = asyncHandler(async (req, res) => {
   if (!syncData || !syncData.events || !syncData.userId) {
     return ResponseHandler.badRequest(res, 'Missing required fields: events and userId');
   }
-  console.log('syncData', syncData);
   const result = await CalendarService.syncCalendarEvents(syncData);
   
   return ResponseHandler.success(res, 200, result, result.message);
@@ -38,6 +37,27 @@ const getCalendarEvents = asyncHandler(async (req, res) => {
     events,
     count: events.length,
   }, 'Calendar events retrieved successfully');
+});
+
+/**
+ * Get a single calendar event by event_id
+ * GET /api/calendar/events/:eventId
+ */
+const getCalendarEventById = asyncHandler(async (req, res) => {
+  const { firebase_uid } = req.user;
+  const { eventId } = req.params;
+
+  if (!eventId) {
+    return ResponseHandler.badRequest(res, 'Event ID is required');
+  }
+
+  const event = await CalendarService.getCalendarEventById(firebase_uid, eventId);
+  
+  if (!event) {
+    return ResponseHandler.notFound(res, 'Event not found');
+  }
+
+  return ResponseHandler.success(res, 200, event, 'Calendar event retrieved successfully');
 });
 
 /**
@@ -119,11 +139,31 @@ const getEventsByDateRange = asyncHandler(async (req, res) => {
   }, 'Events retrieved successfully');
 });
 
+/**
+ * Create a single calendar event from chat
+ * POST /api/calendar/events/create
+ */
+const createCalendarEvent = asyncHandler(async (req, res) => {
+  const { firebase_uid } = req.user;
+  const { event, attachedContacts, source } = req.body;
+
+  // Validate required fields
+  if (!event || !event.title || !event.startDate || !event.endDate) {
+    return ResponseHandler.badRequest(res, 'Event with title, startDate, and endDate is required');
+  }
+
+  const result = await CalendarService.createCalendarEvent(firebase_uid, event, attachedContacts, source);
+  
+  return ResponseHandler.success(res, 201, result, 'Calendar event created successfully');
+});
+
 module.exports = {
   syncCalendarEvents,
   getCalendarEvents,
+  getCalendarEventById,
   deleteCalendarEvent,
   getCalendarStats,
   getUpcomingEvents,
-  getEventsByDateRange
+  getEventsByDateRange,
+  createCalendarEvent,
 };
