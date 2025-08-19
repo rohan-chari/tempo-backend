@@ -84,7 +84,7 @@ class App {
       // Initialize Firebase service
       firebaseService.initialize();
 
-      const server = this.app.listen(config.port, () => {
+      const server = this.app.listen(config.port, '0.0.0.0', () => {
         logger.info(`Server running on port ${config.port} in ${config.nodeEnv} mode`);
         logger.info(`API available at http://localhost:${config.port}${config.apiPrefix}`);
       });
