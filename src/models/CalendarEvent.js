@@ -1,4 +1,5 @@
 const db = require('../database/connection');
+const logger = require('../utils/logger');
 
 class CalendarEvent {
   static async create(eventData) {
@@ -9,6 +10,8 @@ class CalendarEvent {
       start_date,
       end_date,
       is_all_day,
+      notes,
+      location,
       calendar_id,
       calendar_name,
       firebase_uid,
@@ -25,8 +28,8 @@ class CalendarEvent {
 
     const query = `
       INSERT INTO calendar_events 
-      (event_id, user_id, title, start_date, end_date, is_all_day, calendar_id, calendar_name, firebase_uid, fetched_at)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      (event_id, user_id, title, start_date, end_date, is_all_day, notes, location, calendar_id, calendar_name, firebase_uid, fetched_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `;
 
     const values = [
@@ -36,6 +39,8 @@ class CalendarEvent {
       formatDateTime(start_date),
       formatDateTime(end_date),
       is_all_day,
+      notes || null,
+      location || null,
       calendar_id,
       calendar_name,
       firebase_uid,
@@ -118,7 +123,15 @@ class CalendarEvent {
     try {
       await connection.beginTransaction();
 
-      // Insert new events with duplicate handling
+      // Log sync operation start
+      logger.info('Starting calendar sync', {
+        userId,
+        firebaseUid,
+        eventsCount: events.length,
+        eventIds: events.map(e => e.id),
+      });
+
+      // Step 1: Upsert all events from sync payload
       for (const event of events) {
         // Convert ISO datetime strings to MySQL datetime format
         const startDate = new Date(event.startDate).toISOString().slice(0, 19).replace('T', ' ');
@@ -127,13 +140,15 @@ class CalendarEvent {
         
         await connection.execute(`
           INSERT INTO calendar_events 
-          (event_id, user_id, title, start_date, end_date, is_all_day, calendar_id, calendar_name, firebase_uid, fetched_at)
-          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+          (event_id, user_id, title, start_date, end_date, is_all_day, notes, location, calendar_id, calendar_name, firebase_uid, fetched_at)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
           ON DUPLICATE KEY UPDATE
           title = VALUES(title),
           start_date = VALUES(start_date),
           end_date = VALUES(end_date),
           is_all_day = VALUES(is_all_day),
+          notes = VALUES(notes),
+          location = VALUES(location),
           calendar_id = VALUES(calendar_id),
           calendar_name = VALUES(calendar_name),
           firebase_uid = VALUES(firebase_uid),
@@ -146,11 +161,49 @@ class CalendarEvent {
           startDate,
           endDate,
           event.isAllDay,
+          event.notes || null,
+          event.location || null,
           event.calendarId,
           event.calendarName,
           firebaseUid,
           fetchedAt
         ]);
+      }
+
+      // Step 2: Delete events that are not in the sync payload
+      // Get all event_ids from the sync payload
+      const syncEventIds = events.map(event => event.id);
+      
+      if (syncEventIds.length > 0) {
+        // Delete events for this user that are not in the sync payload
+        // The ON DELETE CASCADE will automatically delete related event_contacts
+        const placeholders = syncEventIds.map(() => '?').join(',');
+        const deleteResult = await connection.execute(`
+          DELETE FROM calendar_events 
+          WHERE user_id = ? 
+          AND event_id NOT IN (${placeholders})
+        `, [userId, ...syncEventIds]);
+        
+        logger.info('Calendar sync completed', {
+          userId,
+          firebaseUid,
+          eventsUpserted: events.length,
+          eventsDeleted: deleteResult.affectedRows,
+          syncEventIds,
+        });
+      } else {
+        // If no events in sync payload, delete all events for this user
+        const deleteResult = await connection.execute(`
+          DELETE FROM calendar_events 
+          WHERE user_id = ?
+        `, [userId]);
+        
+        logger.info('Calendar sync completed - all events deleted', {
+          userId,
+          firebaseUid,
+          eventsUpserted: 0,
+          eventsDeleted: deleteResult.affectedRows,
+        });
       }
 
       await connection.commit();

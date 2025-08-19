@@ -13,7 +13,7 @@ class CalendarService {
    * @param {string} syncData.source - Source of the sync
    * @returns {Object} Sync result
    */
-  static async syncCalendarEvents(syncData) {
+  static async syncCalendarEvents (syncData) {
     const { events, userId: firebaseUid } = syncData;
 
     // Validate required fields
@@ -46,6 +46,7 @@ class CalendarService {
       message: `Successfully synced ${result.eventsCount} calendar events`,
       eventsCount: result.eventsCount,
       timestamp: new Date().toISOString(),
+      syncType: 'full_sync_with_cleanup',
     };
   }
 
@@ -55,7 +56,7 @@ class CalendarService {
    * @param {string} eventId - The event_id to search for
    * @returns {Object|null} Calendar event with contacts or null if not found
    */
-  static async getCalendarEventById(firebaseUid, eventId) {
+  static async getCalendarEventById (firebaseUid, eventId) {
     try {
       const events = await CalendarEvent.findByFirebaseUid(firebaseUid);
       const event = events.find(e => e.event_id === eventId);
@@ -229,6 +230,8 @@ class CalendarService {
         start_date: startDate,
         end_date: endDate,
         is_all_day: event.isAllDay || false,
+        notes: event.notes || null,
+        location: event.location || null,
         calendar_id: event.calendarId,
         calendar_name: event.calendarName,
         firebase_uid: firebaseUid,

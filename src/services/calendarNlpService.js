@@ -42,6 +42,12 @@ Rules:
 - For "tomorrow morning" use timeStart="09:00", timeEnd="11:00" unless specific time given
 - For "tomorrow afternoon" use timeStart="12:00", timeEnd="17:00" unless specific time given
 - Default duration: If only start time is specified without end time, set duration to 1 hour (e.g., if timeStart="14:00", set timeEnd="15:00")
+- UPDATE actions: When user says "change from X to Y" or "move from X to Y":
+  * X = the OLD/original time (ignore this for timeStart/timeEnd)
+  * Y = the NEW time (use this for timeStart/timeEnd)
+  * Example: "change my coffee chat from 7pm to 8pm" → timeStart="20:00", timeEnd="21:00"
+  * Example: "move meeting from 2pm to 3pm" → timeStart="15:00", timeEnd="16:00"
+  * For UPDATE actions, dates can be null since user is referring to existing event
 - Event titles: Be creative and descriptive based on context. Examples:
   * "dinner with rohit" → "Dinner with Rohit"
   * "lunch meeting" → "Lunch Meeting"
@@ -82,20 +88,20 @@ async function parseCalendarIntent (userInput, { timeoutMs = 10000, contacts = [
 
     // Get current date/time context
     const now = new Date();
-    const today = now.toLocaleDateString('en-US', { 
-      weekday: 'long', 
-      year: 'numeric', 
-      month: 'long', 
-      day: 'numeric' 
+    const today = now.toLocaleDateString('en-US', {
+      weekday: 'long',
+      year: 'numeric',
+      month: 'long',
+      day: 'numeric',
     });
-    const currentTime = now.toLocaleTimeString('en-US', { 
-      hour: '2-digit', 
+    const currentTime = now.toLocaleTimeString('en-US', {
+      hour: '2-digit',
       minute: '2-digit',
-      hour12: true 
+      hour12: true,
     });
 
     // Add contacts context if available
-    const contactsContext = contacts.length > 0 
+    const contactsContext = contacts.length > 0
       ? `\nAvailable contacts: ${JSON.stringify(contacts, null, 2)}`
       : '';
 
@@ -119,8 +125,6 @@ async function parseCalendarIntent (userInput, { timeoutMs = 10000, contacts = [
       today,
       currentTime,
     });
-
-
 
     const response = await openai.chat.completions.create(requestPayload, { signal: controller.signal });
 
@@ -192,21 +196,42 @@ async function parseCalendarIntent (userInput, { timeoutMs = 10000, contacts = [
       throw err;
     }
 
-    // Ensure endDate is always set - if null, use same as startDate
-    if (!parsed.endDate && parsed.startDate) {
-      parsed.endDate = parsed.startDate;
-    }
+    // Handle date validation based on action type
+    if (parsed.action === 'CREATE') {
+      // For CREATE actions, ensure endDate is always set - if null, use same as startDate
+      if (!parsed.endDate && parsed.startDate) {
+        parsed.endDate = parsed.startDate;
+      }
 
-    // Validate that we have both startDate and endDate
-    if (!parsed.startDate || !parsed.endDate) {
-      logger.error('Missing startDate or endDate after processing', {
+      // For CREATE actions, require both startDate and endDate
+      if (!parsed.startDate || !parsed.endDate) {
+        logger.error('Missing startDate or endDate for CREATE action', {
+          startDate: parsed.startDate,
+          endDate: parsed.endDate,
+          parsedContent: parsed,
+        });
+        const err = new Error('Missing required date fields for event creation');
+        err.status = 502;
+        throw err;
+      }
+    } else if (parsed.action === 'UPDATE') {
+      // For UPDATE actions, dates can be null since user is referring to existing event
+      // But if dates are provided, ensure endDate is set
+      if (parsed.startDate && !parsed.endDate) {
+        parsed.endDate = parsed.startDate;
+      }
+
+      logger.info('UPDATE action - dates can be null for existing event reference', {
         startDate: parsed.startDate,
         endDate: parsed.endDate,
-        parsedContent: parsed,
+        timeStart: parsed.timeStart,
+        timeEnd: parsed.timeEnd,
       });
-      const err = new Error('Missing required date fields');
-      err.status = 502;
-      throw err;
+    } else {
+      // For other actions (GET, DELETE), dates can be null
+      if (parsed.startDate && !parsed.endDate) {
+        parsed.endDate = parsed.startDate;
+      }
     }
 
     const responseTime = Date.now() - startTime;
